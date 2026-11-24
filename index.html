@@ -35,8 +35,9 @@
 <div class="setup-controls"><button class="btn" type="button" id="close-history">Close</button><button class="btn primary" type="submit">Check history</button></div>
 </form>
 <p id="history-status" role="status"></p>
-<div id="history-result" hidden><h3 id="history-asof"></h3><dl id="history-metrics"></dl><p>These figures describe the imported history. They do not change the sample rankings or predict a rebound.</p></div>
+<div id="history-result" hidden><h3 id="history-asof"></h3><dl id="history-metrics"></dl><p>Pilot formula v1 gives up to 40 points for a decline of 20% from the prior 20-session closing high, 40 for a one-session gain of 5%, and 20 for volume at twice the prior 20-session average. Each component scales linearly from zero, is capped and rounded. Volume points start above average volume. The weights are experimental. These figures describe the imported history. They do not change the sample rankings or predict a rebound.</p></div>
 </dialog>
+<script src="./pilot.js"></script>
 <script>window.REBOUND_CLERK_PUBLISHABLE_KEY="";</script>
 <script>
 const stocks=[['VYNE','United States','Moderate',4.82,-18.4,87,'Earnings overreaction','VYNE Therapeutics'],['CLSK','United States','Moderate',11.64,-12.1,83,'Sector selloff','CleanSpark'],['SOFI','United States','Moderate',8.21,-9.7,79,'Analyst action','SoFi Technologies'],['LUMN','United States','Moderate',5.93,-10.8,77,'Guidance concern','Lumen Technologies'],['NOK','Europe','Moderate',4.61,-8.9,75,'Macro pressure','Nokia'],['IONQ','United States','Aggressive',15.78,-21.3,86,'Growth selloff','IonQ'],['PLUG','United States','Aggressive',2.31,-17.6,81,'Financing concern','Plug Power'],['SOUN','United States','Aggressive',6.43,-15.2,80,'Momentum unwind','SoundHound AI'],['LSPD','Canada','Moderate',13.22,-11.9,78,'Earnings reaction','Lightspeed Commerce'],['VOD','Europe','Moderate',9.55,-7.8,73,'Sector pressure','Vodafone'],['AZUL','Latin America','Aggressive',1.18,-19.4,79,'Financial distress concern','Azul'],['NIO','Asia','Aggressive',4.97,-13.5,76,'EV sector weakness','NIO']].map((s,id)=>({id,symbol:s[0],region:s[1],risk:s[2],price:s[3],drop:s[4],opportunity:s[5],cause:s[6],name:s[7]}));
@@ -224,6 +225,13 @@ loadAuth();
       if (!dialog.open || fileInput.files[0] !== file || get('history-symbol').value.trim().toUpperCase() !== symbol) return;
       const bars = parseDailyBars(csv);
       const metrics = describeHistory(bars);
+      const pilot = reboundScore(bars);
+      if (pilot) {
+        metrics.push(['Pilot research score', pilot.score + ' / 100'],
+          ['Why it ranked', pilot.points[0] + '/40 decline, ' + pilot.points[1] + '/40 recovery, ' + pilot.points[2] + '/20 volume']);
+      } else {
+        metrics.push(['Pilot score unavailable', 'Requires a close below the prior 20-session high and positive average volume.']);
+      }
       get('history-asof').textContent = symbol + ' · as of ' + bars.at(-1).date;
       get('history-metrics').replaceChildren(...metrics.flatMap(([label, value]) => {
         const term = document.createElement('dt');
