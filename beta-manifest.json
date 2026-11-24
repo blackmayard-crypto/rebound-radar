@@ -1,5 +1,5 @@
 {
-  "html_sha256": "124b8fb38d892775ebf96c3b9feac7b4738daad9a96633f7deb27562fa9eaa47",
+  "html_sha256": "b7fe92c9142afbd539f864954bb1e0b1d82fd7f1406ab0957e076bb0316af24c",
   "pages_workflow": ".github/workflows/pages.yml",
   "demo_count": 12,
   "mode": "static_beta"
