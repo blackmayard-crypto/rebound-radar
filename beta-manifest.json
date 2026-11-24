@@ -1,0 +1,6 @@
+{
+  "html_sha256": "73aa146e42b7d52848451a4e5eeaaeca786c1b75b203c409468198ca6c2e20da",
+  "pages_workflow": ".github/workflows/pages.yml",
+  "demo_count": 12,
+  "mode": "static_beta"
+}
