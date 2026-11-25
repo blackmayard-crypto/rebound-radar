@@ -1,0 +1,10 @@
+PUBLIC_ORIGIN=http://localhost:8787
+BETA_URL=https://blackmayard-crypto.github.io/rebound-radar/
+STRIPE_TEST_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PORTAL_CONFIGURATION=bpc_1UfP5BPy9VdylxTTAVzSXfwW
+STRIPE_PRO_MONTH=price_1UfOwUPy9VdylxTTJYs2aq7J
+STRIPE_PRO_YEAR=price_1UfOwdPy9VdylxTTw1lP3FVW
+STRIPE_PREMIUM_MONTH=
+STRIPE_PREMIUM_YEAR=
+TESTER_HASHES='{"reviewer":"replace-with-sha256-hex-of-random-tester-token"}'

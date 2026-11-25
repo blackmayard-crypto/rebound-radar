@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Billing Sandbox · Rebound Radar</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/billing.js"></script>
+</head>
+<body>
+  <header>
+    <a href="/beta" aria-label="Rebound Radar free beta"><img src="/logo.webp" alt="Rebound Radar" width="200" height="65"></a>
+    <a href="/beta" class="btn">Open free beta</a>
+  </header>
+  <main>
+    <p class="eyebrow">STRIPE SANDBOX</p>
+    <h1>Research subscriptions</h1>
+    <p class="muted">Use Stripe test cards. This preview uses billing fixtures and does not include stock rankings or research editions.</p>
+    <p id="status" role="status" aria-live="polite">Checking your sandbox session…</p>
+    <form id="login" hidden>
+      <label for="token">Sandbox access code</label>
+      <input id="token" name="token" type="password" autocomplete="off" required>
+      <button class="btn primary">Sign in</button>
+    </form>
+    <section id="account" hidden aria-label="Sandbox account">
+      <div class="actions">
+        <button class="btn" id="manage" hidden>Manage billing</button>
+        <button class="btn" id="refresh">Refresh status</button>
+        <button class="btn" id="logout">Sign out</button>
+      </div>
+      <div id="plans" class="plans" aria-label="Available subscriptions"></div>
+      <section id="research" class="card" aria-labelledby="research-title" hidden>
+        <h2 id="research-title">Research access</h2>
+        <p id="weekday"></p>
+        <p id="ai"></p>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

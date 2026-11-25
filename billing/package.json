@@ -1,0 +1,23 @@
+{
+  "name": "rebound-radar-billing-sandbox",
+  "version": "1.0.0",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "node --test",
+    "dev": "wrangler dev --ip 127.0.0.1 --port 8787",
+    "migrate:local": "wrangler d1 migrations apply rebound-radar-billing-sandbox --local"
+  },
+  "type": "module",
+  "dependencies": {
+    "stripe": "23.2.0"
+  },
+  "devDependencies": {
+    "wrangler": "4.168.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "private": true
+}
