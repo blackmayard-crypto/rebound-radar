@@ -10,9 +10,9 @@ The billing preview lives in this directory and uses the existing Rebound Radar 
 | Pro | $9.99 | $99 | Five weekday research candidates |
 | Premium | $19.99 | $199 | Ten weekday candidates and deeper AI-company research |
 
-Use the existing **Rebound Radar sandbox** (`acct_1UfMTlPy9VdylxTT`). It has two active Pro-equivalent prices and a portal configuration with period-end cancellation. The sample environment points to those existing sandbox IDs. Existing Stripe records show successful monthly and annual Checkout payments, including one subscription scheduled to cancel at period end. Those records predate this code.
+Use the existing **Rebound Radar sandbox** (`acct_1UfMTlPy9VdylxTT`). It has four active recurring USD prices and a portal configuration with period-end cancellation. The existing sandbox research product carries both tiers, with distinct Premium prices and lookup keys. The sample environment contains all four sandbox price IDs. Existing Stripe records show successful monthly and annual Checkout payments, including one subscription scheduled to cancel at period end. Those records predate this code.
 
-Sandbox setup still needs one Premium product with two recurring USD prices, a server-side sandbox restricted key, and a webhook signing secret. The existing portal enables period-end cancellation. Consider enabling payment-method updates and invoice history before hosted review. Keep plan changes and proration disabled for this first pass. Use a separate sandbox customer for each test identity.
+Sandbox setup still needs a server-side sandbox restricted key and a webhook signing secret. The existing portal enables period-end cancellation. Consider enabling payment-method updates and invoice history before hosted review. Keep plan changes and proration disabled for this first pass. Use a separate sandbox customer for each test identity.
 
 Live setup requires a separate decision. Confirm the receiving Stripe account and statement descriptor, then approve two live products and four recurring USD prices, a live webhook and portal configuration, and keys stored only in the production runtime. Review tax treatment and customer-facing policies before activating any live checkout. Test-only credentials, catalog IDs, and webhook events remain isolated from production.
 
@@ -40,7 +40,7 @@ Generate a unique sandbox access code and hash with the command below. Put only 
 node --input-type=module -e 'import {randomBytes,createHash} from "node:crypto"; const token=randomBytes(32).toString("base64url"); console.log("Tester code",token); console.log("Server hash",createHash("sha256").update(token).digest("hex"))'
 ```
 
-Set the two Premium price IDs, the sandbox key and the webhook secret in `.dev.vars`. A restricted key needs Checkout Sessions write, Customers write, Billing Portal Sessions write, and read access for Prices, Subscriptions, Invoices, Invoice Payments, PaymentIntents and Billing Portal Configurations. Verify minimum permissions in the sandbox before hosted use.
+Set the sandbox key and the webhook secret in `.dev.vars`. A restricted key needs Checkout Sessions write, Customers write, Billing Portal Sessions write, and read access for Prices, Subscriptions, Invoices, Invoice Payments, PaymentIntents and Billing Portal Configurations. Verify minimum permissions in the sandbox before hosted use.
 
 With the Stripe CLI explicitly authenticated to the Rebound Radar sandbox, run the listener below and set `STRIPE_WEBHOOK_SECRET` to the listener's local signing secret. Start the dev server in another shell and use [http://localhost:8787](http://localhost:8787). Stripe webhook forwarding for local development and the deployed webhook endpoint use separate signing secrets.
 
