@@ -24,15 +24,16 @@ function card(plan, canSubscribe) {
   const name = document.createElement('h2');
   name.textContent = plan.name;
   const price = document.createElement('p');
-  const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(plan.cents / 100);
-  price.textContent = `${amount} / ${plan.interval}`;
+  const money = cents => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+  price.textContent = plan.firstYearCents === null ? `${money(plan.cents)} / ${plan.interval}` :
+    `${money(plan.firstYearCents)} for the first year (50% off). Renews automatically at ${money(plan.cents)} per year unless you cancel before renewal in the billing portal.`;
   const button = document.createElement('button');
   button.className = 'btn primary';
   button.textContent = plan.configured ? `Test ${plan.name} ${plan.interval === 'month' ? 'monthly' : 'annual'} checkout` :
     'Sandbox price pending';
   button.disabled = !plan.configured || !canSubscribe;
   button.addEventListener('click', () => action(async () => {
-    location.assign((await api('checkout', { plan: plan.key })).url);
+    location.assign((await api('checkout', { plan: plan.key, quotedCents: plan.firstYearCents ?? plan.cents })).url);
   }));
   element.append(name, price, button);
   return element;

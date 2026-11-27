@@ -20,8 +20,10 @@ let platform;
 
 before(async () => {
   platform = await getPlatformProxy({ configPath: 'wrangler.jsonc', persist: false });
-  const schema = await readFile(new URL('../migrations/0001_sandbox.sql', import.meta.url), 'utf8');
-  await platform.env.DB.batch(schema.split(';').filter(sql => sql.trim()).map(sql => platform.env.DB.prepare(sql)));
+  for (const migration of ['0001_sandbox.sql', '0002_holiday_checkout.sql']) {
+    const schema = await readFile(new URL('../migrations/' + migration, import.meta.url), 'utf8');
+    await platform.env.DB.batch(schema.split(';').filter(sql => sql.trim()).map(sql => platform.env.DB.prepare(sql)));
+  }
 });
 after(async () => { await platform?.dispose(); });
 
@@ -49,6 +51,11 @@ function fixture(planKey = 'pro-month') {
     sessions: new Map(),
     subscriptions: [],
     paid: true,
+    amountPaid: plan.cents,
+    refundCents: 0,
+    billingReason: 'subscription_cycle',
+    coupon: { id: 'rr_holiday_fixture', livemode: false, valid: true, percent_off: 50, duration: 'once' },
+    discountCoupon: null,
     failure: false,
     refunded: false,
     disputed: false,
@@ -61,9 +68,14 @@ function fixture(planKey = 'pro-month') {
     webhooks: sdk.webhooks,
     customers: { create: async ({ metadata }) => ({ livemode: false, id: 'cus_' + metadata.member }) },
     prices: { retrieve: async id => Object.values(catalog).find(price => price.id === id) },
+    coupons: { retrieve: async () => state.coupon },
     checkout: { sessions: { create: async (params, { idempotencyKey }) => {
       if (!state.sessions.has(idempotencyKey)) state.sessions.set(idempotencyKey, params);
-      return { livemode: false, customer: params.customer, status: 'open', url: 'https://checkout.stripe.com/c/pay/fixture' };
+      return {
+        livemode: false, customer: params.customer, status: 'open', url: 'https://checkout.stripe.com/c/pay/fixture',
+        currency: 'usd', amount_total: params.discounts ? plan.cents / 2 : plan.cents,
+        total_details: { amount_discount: params.discounts ? plan.cents / 2 : 0 },
+      };
     } } },
     subscriptions: {
       list: async ({ customer }) => {
@@ -75,11 +87,18 @@ function fixture(planKey = 'pro-month') {
     invoices: { retrieve: async invoice => {
       const sub = state.subscriptions.find(sub => sub.latest_invoice === invoice);
       const item = sub.items.data[0];
+      const discount = state.discountCoupon && {
+        id: 'di_holiday_fixture', customer: sub.customer, subscription: sub.id,
+        source: { type: 'coupon', coupon: state.discountCoupon },
+      };
       return {
         status: state.paid ? 'paid' : 'open', livemode: false, customer: sub.customer,
-        parent: { subscription_details: { subscription: sub.id } },
-        currency: 'usd', amount_paid: plan.cents,
-        billing_reason: 'subscription_cycle',
+        parent: { subscription_details: { subscription: sub.id, metadata: sub.metadata } },
+        currency: 'usd', amount_paid: state.amountPaid, subtotal: plan.cents,
+        total: discount ? plan.cents / 2 : plan.cents,
+        discounts: discount ? [discount] : [],
+        total_discount_amounts: discount ? [{ discount: discount.id, amount: plan.cents / 2 }] : [],
+        billing_reason: state.billingReason,
         lines: { has_more: false, data: [{
           parent: { subscription_item_details: { subscription_item: item.id } },
           pricing: { price_details: { price: state.wrongLine ? 'price_other' : item.price.id } },
@@ -90,15 +109,15 @@ function fixture(planKey = 'pro-month') {
     invoicePayments: { list: async ({ invoice }) => ({
       has_more: false,
       data: state.noCharge ? [] : [{
-        invoice, livemode: false, status: 'paid', currency: 'usd', amount_paid: plan.cents,
+        invoice, livemode: false, status: 'paid', currency: 'usd', amount_paid: state.amountPaid,
         payment: { type: 'payment_intent', payment_intent: 'pi_' + invoice },
       }],
     }) },
     paymentIntents: { retrieve: async () => ({
-      livemode: false, customer: state.customer, status: 'succeeded', currency: 'usd', amount_received: plan.cents,
+      livemode: false, customer: state.customer, status: 'succeeded', currency: 'usd', amount_received: state.amountPaid,
       latest_charge: {
         livemode: false, paid: true, captured: true, disputed: state.disputed, refunded: state.refunded,
-        amount_captured: plan.cents, amount_refunded: state.refunded ? plan.cents : 0,
+        amount_captured: state.amountPaid, amount_refunded: state.refunded ? state.amountPaid : state.refundCents,
       },
     }) },
     billingPortal: {
@@ -326,4 +345,101 @@ test('portal uses only the signed-in customer and cancellation retains access un
   await f.hook('customer.subscription.deleted', sub, 'evt_ended');
   await f.hook('invoice.paid', invoiceEvent(sub), 'evt_stale_paid');
   assert.equal((await f.call('/api/research', { cookie })).status, 403);
+});
+
+
+function enableHoliday(f) {
+  f.env.STRIPE_HOLIDAY_COUPON = f.state.coupon.id;
+  f.env.HOLIDAY_OFFER_STARTS = new Date((timestamp - 60) * 1000).toISOString();
+  f.env.HOLIDAY_OFFER_ENDS = new Date((timestamp + 60) * 1000).toISOString();
+}
+
+test('reserves only server-approved annual holiday prices and preserves a quote across cutoff and retries', async () => {
+  const f = fixture('pro-year');
+  enableHoliday(f);
+  const cookie = await register(f, 'holiday_quote', 'holiday_late');
+  const status = async currentCookie => (await f.call('/api/status', { cookie: currentCookie })).json();
+  const plans = (await status(cookie)).plans;
+  assert.equal(plans.find(plan => plan.key === 'pro-year').firstYearCents, 4950);
+  assert.equal(plans.find(plan => plan.key === 'premium-year').firstYearCents, 9950);
+  assert.equal(plans.find(plan => plan.key === 'pro-month').firstYearCents, null);
+
+  const checkout = (key, quotedCents, currentCookie = cookie) => f.call('/api/checkout', {
+    cookie: currentCookie, body: { plan: key, quotedCents, coupon: 'arbitrary', discounts: [{ coupon: 'arbitrary' }] },
+  });
+  assert.equal((await checkout('pro-month', 499)).status, 409);
+  assert.equal((await checkout('pro-year', 9900)).status, 409);
+  f.state.coupon.duration = 'forever';
+  assert.equal((await checkout('pro-year', 4950)).status, 503);
+  f.state.coupon.duration = 'once';
+  const responses = await Promise.all([checkout('pro-year', 4950), checkout('pro-year', 4950)]);
+  assert.deepEqual(responses.map(response => response.status), [200, 200]);
+  const [request] = f.state.sessions.values();
+  assert.deepEqual(request.discounts, [{ coupon: f.state.coupon.id }]);
+  assert.equal(request.allow_promotion_codes, undefined);
+  assert.equal(request.subscription_data.metadata.holiday_coupon, f.state.coupon.id);
+  assert.match(request.custom_text.submit.message, /renews automatically at \$99\.00/i);
+
+  f.advance(60);
+  assert.equal((await status(cookie)).plans.find(plan => plan.key === 'pro-year').firstYearCents, 4950);
+  assert.equal((await checkout('pro-year', 4950)).status, 200);
+  assert.equal(f.state.sessions.size, 1);
+  const late = await f.login(otherTester);
+  assert.equal((await checkout('pro-year', 4950, late)).status, 409);
+  assert.equal((await checkout('pro-year', 9900, late)).status, 200);
+  assert.equal([...f.state.sessions.values()][1].discounts, undefined);
+});
+
+test('a settled annual holiday payment unlocks each tier and rejects unauthorized discounts', async () => {
+  for (const [tier, firstPayment] of [['pro', 4950], ['premium', 9950]]) {
+    const plan = tier + '-year';
+    const f = fixture(plan);
+    const member = 'holiday_' + tier;
+    enableHoliday(f);
+    const cookie = await register(f, member);
+    assert.equal((await f.call('/api/checkout', { cookie, body: { plan, quotedCents: firstPayment } })).status, 200);
+    const sub = f.subscribe(member, 'in_' + member);
+    f.state.billingReason = 'subscription_create';
+    f.state.amountPaid = firstPayment;
+    f.state.discountCoupon = f.state.coupon;
+    const research = () => f.call('/api/research', { cookie });
+    const paid = suffix => f.hook('invoice.paid', invoiceEvent(sub), 'evt_' + member + suffix);
+    await paid('_missing_authorization');
+    assert.equal((await research()).status, 403);
+    sub.metadata = [...f.state.sessions.values()][0].subscription_data.metadata;
+    f.state.discountCoupon = { ...f.state.coupon, id: 'unexpected_coupon' };
+    await paid('_wrong_coupon');
+    assert.equal((await research()).status, 403);
+    f.state.discountCoupon = f.state.coupon;
+    f.state.amountPaid -= 1;
+    await paid('_short_payment');
+    assert.equal((await research()).status, 403);
+    f.state.amountPaid = firstPayment;
+    f.advance(61);
+    delete f.env.STRIPE_HOLIDAY_COUPON;
+    await paid('_verified');
+    assert.equal((await (await research()).json()).tier, tier);
+
+    f.state.refundCents = 1;
+    await f.hook('charge.refunded', { id: 'ch_' + member }, 'evt_' + member + '_partial_refund');
+    assert.equal((await research()).status, 403);
+    f.state.refundCents = 0;
+
+    sub.latest_invoice += '_renewal';
+    f.state.billingReason = 'subscription_cycle';
+    await paid('_discounted_renewal');
+    assert.equal((await research()).status, 403);
+    f.state.discountCoupon = null;
+    f.state.amountPaid = firstPayment * 2;
+    await paid('_regular_renewal');
+    assert.equal((await research()).status, 200);
+    sub.cancel_at_period_end = true;
+    sub.cancel_at = sub.items.data[0].current_period_end;
+    await f.hook('customer.subscription.updated', sub, 'evt_' + member + '_cancel');
+    const current = await (await f.call('/api/status', { cookie })).json();
+    assert.equal(current.tier, tier);
+    assert.equal(current.cancelAtPeriodEnd, true);
+    f.advance(3600);
+    assert.equal((await research()).status, 403);
+  }
 });

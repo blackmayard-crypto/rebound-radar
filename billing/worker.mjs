@@ -1,5 +1,5 @@
 import { cookie, getMember, hash, sandboxOrigin, sessionToken, signIn } from './access.mjs';
-import { plans } from './catalog.mjs';
+import { activeHolidayCoupon, holidayCents, plans } from './catalog.mjs';
 import { entitlement, handleWebhook, openPortal, RequestError, startCheckout, stripeClient } from './stripe.mjs';
 
 const NO_CACHE = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
@@ -50,9 +50,14 @@ async function readJson(request) {
   }
 }
 
-function publicPlans(env) {
+function publicPlans(env, member, status, now) {
+  const coupon = status === 'none' ? activeHolidayCoupon(env, now) : null;
+  const pending = member.checkout_expires > now;
+
   return Object.entries(plans).map(([key, plan]) => ({
     key, name: plan.name, interval: plan.interval, cents: plan.cents,
+    firstYearCents: plan.interval === 'year' &&
+      (pending ? member.checkout_plan === key && member.checkout_coupon : coupon) ? holidayCents(plan) : null,
     configured: /^price_[a-zA-Z0-9]+$/.test(env[plan.variable] ?? ''),
   }));
 }
@@ -97,9 +102,9 @@ export function createWorker({ client = stripeClient, clock = () => Date.now() }
 
         switch (url.pathname) {
           case '/api/checkout': {
-            const { plan } = await readJson(request);
+            const { plan, quotedCents } = await readJson(request);
             if (typeof plan !== 'string') throw new RequestError(400, 'Choose a valid plan.');
-            return json(await startCheckout(client(env.STRIPE_TEST_KEY), env, member, plan, origin, now));
+            return json(await startCheckout(client(env.STRIPE_TEST_KEY), env, member, plan, origin, now, quotedCents));
           }
           case '/api/portal':
             return json(await openPortal(client(env.STRIPE_TEST_KEY), env, member, origin));
@@ -107,7 +112,7 @@ export function createWorker({ client = stripeClient, clock = () => Date.now() }
           case '/api/research': {
             const access = await entitlement(client(env.STRIPE_TEST_KEY), env, member, now);
             if (url.pathname === '/api/status') {
-              return json({ ...access, hasBillingAccount: Boolean(member.stripe_customer), plans: publicPlans(env) });
+              return json({ ...access, hasBillingAccount: Boolean(member.stripe_customer), plans: publicPlans(env, member, access.status, now) });
             }
             if (access.tier === 'free') throw new RequestError(403, 'A verified sandbox subscription is required.');
             return json({

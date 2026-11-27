@@ -23,6 +23,27 @@ Published standard US fees used for estimates are 2.9% + $0.30 per successful do
 - [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/)
 - [Cloudflare D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/)
 
+## Proposed holiday offer
+
+New annual members receive 50% off the first year. The proposed signup window is December 1–31, 2026 Eastern time. A Checkout Session started before the cutoff can be completed within its existing 35-minute lifetime. Each member's first Rebound Radar subscription is eligible. Monthly plans use the existing catalog prices.
+
+| Annual plan | First-year charge | Estimated first-year net | Automatic annual renewal | Estimated net per renewal |
+| --- | ---: | ---: | ---: | ---: |
+| Pro | $49.50 | $47.41 | $99.00 | $95.14 |
+| Premium | $99.50 | $95.61 | $199.00 | $191.54 |
+
+Net is gross less estimated domestic card processing and pay-as-you-go Stripe Billing fees, rounded separately to the nearest cent. The estimates exclude tax, refunds, disputes, international-card and FX fees, and operating costs.
+
+The plan card and Stripe Checkout disclose the regular annual renewal price and how to cancel in the billing portal. Period-end cancellation keeps access through the paid period. Under the existing entitlement policy, a refund that leaves the payment below the price due for the current period ends access. A full refund and subscription cancellation are separate Stripe actions. If both are intended, perform both and verify their state in Stripe.
+
+### Sandbox configuration and validation
+
+Use a sandbox coupon configured for 50% off, with a duration of **Once**. The test coupon `rr_holiday_2026_sandbox` is available in the Rebound Radar sandbox. Set `STRIPE_HOLIDAY_COUPON` to that ID and set `HOLIDAY_OFFER_STARTS` and `HOLIDAY_OFFER_ENDS` to ISO 8601 timestamps with explicit offsets that include the test time. Leave the coupon variable empty to disable new promotional checkouts. To use a Stripe redemption deadline, allow for the 35-minute completion window. Keep the historical coupon record in Stripe for invoice verification.
+
+The server chooses the coupon and applies it to eligible annual sessions. Checkout receives the standard recurring price and a one-invoice discount. The app checks the displayed price against the server-approved price and verifies Stripe's resulting Checkout total before returning the hosted URL. The signed-webhook flow verifies the invoice's subscription and customer, matching line and period, first-invoice coupon and amount, and sufficient settled, undisputed funds. Regular renewals must have zero discount and sufficient payment at the catalog price.
+
+On November 27, 2026, Stripe's sandbox Test Clock produced a paid $49.50 Pro first invoice and a paid $99.00 renewal. Stripe also confirmed period-end cancellation and a $1.00 partial refund on the renewal charge. This was a Dashboard-created test subscription. The automated Worker tests separately cover both annual tiers, checkout price and coupon enforcement, signed-event entitlement, authorized and unauthorized discounts, renewal, cancellation, and refund behavior. A discounted hosted Checkout through this Worker, with actual Stripe webhook delivery, is still pending.
+
 ## Run locally
 
 Requires Node 24+ and the Stripe CLI. Run from this directory.
@@ -40,7 +61,7 @@ Generate a unique sandbox access code and hash with the command below. Put only 
 node --input-type=module -e 'import {randomBytes,createHash} from "node:crypto"; const token=randomBytes(32).toString("base64url"); console.log("Tester code",token); console.log("Server hash",createHash("sha256").update(token).digest("hex"))'
 ```
 
-Set the sandbox key and the webhook secret in `.dev.vars`. A restricted key needs Checkout Sessions write, Customers write, Billing Portal Sessions write, and read access for Prices, Subscriptions, Invoices, Invoice Payments, PaymentIntents and Billing Portal Configurations. Verify minimum permissions in the sandbox before hosted use.
+Set the sandbox key and the webhook secret in `.dev.vars`. A restricted key needs Checkout Sessions write, Customers write, Billing Portal Sessions write, and read access for Prices, Coupons, Subscriptions, Invoices, Invoice Payments, PaymentIntents and Billing Portal Configurations. Verify minimum permissions in the sandbox before hosted use.
 
 With the Stripe CLI explicitly authenticated to the Rebound Radar sandbox, run the listener below and set `STRIPE_WEBHOOK_SECRET` to the listener's local signing secret. Start the dev server in another shell and use [http://localhost:8787](http://localhost:8787). Stripe webhook forwarding for local development and the deployed webhook endpoint use separate signing secrets.
 
@@ -49,7 +70,7 @@ stripe listen --forward-to http://localhost:8787/api/webhook --events checkout.s
 npm run dev
 ```
 
-The Worker rejects live keys and live webhook objects. A successful browser redirect displays pending verification. An independently verified Stripe event records the paid invoice, followed by a fresh Stripe check for each protected request. Paid access requires the authenticated account's Stripe customer, an approved price, a matching current invoice and billing period, and a settled and undisputed payment covering the plan price. The subscription must remain active through its paid period. An outage, failed renewal, ended subscription, or refund below the plan price closes access. Checkout permits one in-flight plan per account, with a 35-minute expiry. Sandbox sessions use revocable, eight-hour cookies after sign-in with a randomly generated tester code.
+The Worker rejects live keys and live webhook objects. A successful browser redirect displays pending verification. An independently verified Stripe event records the paid invoice, followed by a fresh Stripe check for each protected request. Paid access requires the authenticated account's Stripe customer, an approved price, a matching current invoice and billing period, and a settled and undisputed payment covering the verified price due for that period. The subscription must remain active through its paid period. An outage, failed renewal, ended subscription, or refund below the plan price closes access. Checkout permits one in-flight plan per account, with a 35-minute expiry. Sandbox sessions use revocable, eight-hour cookies after sign-in with a randomly generated tester code.
 
 ## Deployment review
 
